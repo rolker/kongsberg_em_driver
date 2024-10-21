@@ -220,8 +220,8 @@ static ds_kongsberg_msgs::KongsbergMRZFull mrz_to_msg_full(const EMdgmMRZ_S& msg
   m.numExtraDetectionClasses = msg.rxInfo.numExtraDetectionClasses;
   m.numBytesPerClass = msg.rxInfo.numBytesPerClass;
 
-  
-  for(int i = 0; i < msg.rxInfo.numSoundingsMaxMain; i++)
+  std::size_t number_of_ss_samples = 0;
+  for(int i = 0; i < msg.rxInfo.numSoundingsMaxMain + msg.rxInfo.numExtraDetections; i++)
   {
     ds_kongsberg_msgs::KongsbergMRZsounding sounding;
     sounding.soundingIndex = msg.sounding[i].soundingIndex;
@@ -265,6 +265,12 @@ static ds_kongsberg_msgs::KongsbergMRZFull mrz_to_msg_full(const EMdgmMRZ_S& msg
     sounding.SIcentreSample = msg.sounding[i].SIcentreSample;
     sounding.SInumSamples = msg.sounding[i].SInumSamples;
     m.soundings.push_back(sounding);
+    number_of_ss_samples += sounding.SInumSamples;
+  }
+
+  for(std::size_t i = 0; i < number_of_ss_samples; i++)
+  {
+    m.SIsample_desidB.push_back(msg.SIsample_desidB[i]);
   }
 
   return m;
@@ -315,11 +321,25 @@ static sensor_msgs::PointCloud2 mrz_to_pointcloud2(const EMdgmMRZ_S& msg,
   pcl::PointXYZI pt;
   for (int i = 0; i < num_soundings; i++)
   {
-    pt.x = msg.sounding[i].x_reRefPoint_m;
-    pt.y = msg.sounding[i].y_reRefPoint_m;
-    pt.z = msg.sounding[i].z_reRefPoint_m - msg.pingInfo.z_waterLevelReRefPoint_m;
-    pt.intensity = msg.sounding[i].reflectivity1_dB;
-    pcl.push_back(pt);
+    // detectionType
+    //   0 = normal detection
+    //   1 = extra detection
+    //   2 = rejected detection In case 2, the estimated range has been used to fill in
+    //       amplitude samples in the seabed image datagram.
+    //
+    // detectionMethod
+    //   0 = no valid detection
+    //   1 = amplitude detection
+    //   2 = phase detection
+    //   3-15 for future use.
+    if(msg.sounding[i].detectionType == 0 && msg.sounding[i].detectionMethod != 0)
+    {
+      pt.x = msg.sounding[i].x_reRefPoint_m;
+      pt.y = msg.sounding[i].y_reRefPoint_m;
+      pt.z = msg.sounding[i].z_reRefPoint_m - msg.pingInfo.z_waterLevelReRefPoint_m;
+      pt.intensity = msg.sounding[i].reflectivity1_dB;
+      pcl.push_back(pt);
+    }
   }
 
   sensor_msgs::PointCloud2 m;
